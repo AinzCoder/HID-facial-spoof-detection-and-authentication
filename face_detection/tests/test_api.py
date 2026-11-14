@@ -354,3 +354,52 @@ def test_upload_limit_can_be_configured_from_environment(monkeypatch) -> None:
         response = client.post("/detect", files=_upload(_png_bytes()))
 
     assert response.status_code == 200
+
+
+def test_cors_allows_only_configured_local_frontend_origins() -> None:
+    pipeline, _, _ = _make_pipeline()
+    app = create_app(pipeline_factory=lambda: pipeline)
+
+    with TestClient(app) as client:
+        allowed = client.options(
+            "/preprocess",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        disallowed = client.get(
+            "/health",
+            headers={"Origin": "https://untrusted.example"},
+        )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "access-control-allow-origin" not in disallowed.headers
+
+
+def test_cors_origin_allowlist_is_configurable_and_rejects_wildcards(monkeypatch) -> None:
+    monkeypatch.setenv("FACE_API_CORS_ORIGINS", "http://localhost:4000")
+    pipeline, _, _ = _make_pipeline()
+    app = create_app(pipeline_factory=lambda: pipeline)
+
+    with TestClient(app) as client:
+        allowed = client.options(
+            "/preprocess",
+            headers={
+                "Origin": "http://localhost:4000",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        default_origin = client.get(
+            "/health",
+            headers={"Origin": "http://localhost:3000"},
+        )
+
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:4000"
+    assert "access-control-allow-origin" not in default_origin.headers
+
+    monkeypatch.setenv("FACE_API_CORS_ORIGINS", "*")
+    with pytest.raises(ValueError, match="explicit allowed origins"):
+        create_app()

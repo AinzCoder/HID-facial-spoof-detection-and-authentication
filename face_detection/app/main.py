@@ -12,6 +12,7 @@ from typing import Callable, Protocol
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
 
@@ -33,6 +34,11 @@ from app.preprocessing_pipeline import (
 LOGGER = logging.getLogger(__name__)
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UPLOAD_BYTES_ENV = "FACE_API_MAX_UPLOAD_BYTES"
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+)
+CORS_ORIGINS_ENV = "FACE_API_CORS_ORIGINS"
 INVALID_IMAGE_DETAIL = "Upload a valid JPG or PNG image."
 OVERSIZED_UPLOAD_DETAIL = "Image upload exceeds the configured size limit."
 PROCESSING_ERROR_DETAIL = "Image processing failed."
@@ -120,6 +126,20 @@ def _configured_upload_limit(value: int | None) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError("max_upload_bytes must be a positive integer.")
     return value
+
+
+def _configured_cors_origins(value: str | None = None) -> list[str]:
+    if value is None:
+        value = os.environ.get(CORS_ORIGINS_ENV)
+    if value is None:
+        return list(DEFAULT_CORS_ORIGINS)
+
+    origins = list(dict.fromkeys(origin.strip() for origin in value.split(",") if origin.strip()))
+    if not origins or any(origin == "*" for origin in origins):
+        raise ValueError(f"{CORS_ORIGINS_ENV} must contain explicit allowed origins.")
+    if any(not origin.startswith(("http://", "https://")) for origin in origins):
+        raise ValueError(f"{CORS_ORIGINS_ENV} entries must be HTTP(S) origins.")
+    return origins
 
 
 def _read_valid_image(upload: UploadFile, max_upload_bytes: int) -> RGBImage:
@@ -231,6 +251,7 @@ def create_app(
 ) -> FastAPI:
     """Create an API instance with injectable pipeline and upload-size limit."""
     upload_limit = _configured_upload_limit(max_upload_bytes)
+    cors_origins = _configured_cors_origins()
     factory = (
         pipeline_factory
         if pipeline_factory is not None
@@ -258,6 +279,13 @@ def create_app(
         ),
         version="1.0.0",
         lifespan=lifespan,
+    )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["content-type"],
     )
     application.state.pipeline = None
     application.state.models_initialized = False

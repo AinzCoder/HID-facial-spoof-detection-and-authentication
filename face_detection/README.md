@@ -192,10 +192,14 @@ spool file managed by the web framework. Avoid collecting raw request bodies
 in logs. Returned landmarks and face crops are biometric data; base64 is an
 encoding, not encryption.
 
-The sample service has no authentication and does not configure CORS. Keep it
-bound to localhost for development. Before public deployment, add appropriate
-authentication, HTTPS, access controls, retention limits, and operational
-monitoring for your environment. Do not expose the service publicly as-is.
+The API enables CORS only for the local frontend origins
+`http://localhost:3000` and `http://127.0.0.1:3000`. Configure a comma-separated
+explicit allowlist with `FACE_API_CORS_ORIGINS` when the trusted development
+origin differs; wildcard origins are rejected. The sample service has no
+authentication. Keep it bound to localhost for development. Before public
+deployment, add appropriate authentication, HTTPS, access controls, retention
+limits, and operational monitoring for your environment. Do not expose the
+service publicly as-is.
 
 ## Live webcam preprocessing demo
 
@@ -230,3 +234,59 @@ Run the complete test suite:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
+
+## Frontend webcam integration
+
+The Next.js frontend includes an opt-in webcam workflow on `/live-detection`.
+Camera permission is requested only after clicking **Start Camera**. The page
+captures one JPEG frame per second and sends it to the local `/preprocess` API;
+the browser does not save frames or face crops. Image uploads elsewhere in the
+frontend, result history, and anti-spoof classification are not implemented.
+
+Requirements: Node.js 20.9 or newer and npm.
+
+Start the backend in one terminal from the project root:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal:
+
+```powershell
+Set-Location .\frontend
+npm install
+Copy-Item .env.local.example .env.local
+npm run dev
+```
+
+Open `http://localhost:3000/live-detection`. The frontend reads the backend
+URL from `NEXT_PUBLIC_API_BASE_URL` (default: `http://127.0.0.1:8000`). The API
+allows `http://localhost:3000` and `http://127.0.0.1:3000` by default; configure
+additional trusted origins with the comma-separated `FACE_API_CORS_ORIGINS`
+environment variable. Wildcard CORS origins are not allowed.
+
+Available routes:
+
+- `/` — project dashboard
+- `/live-detection` — live camera preview and preprocessing results
+- `/image-analysis` — upload workflow placeholder (uploads are disabled)
+- `/results` — empty state (no history is fabricated or saved)
+- `/about` — system components, implementation status, and privacy boundary
+
+Validation commands:
+
+```powershell
+npm run lint
+npm run build
+npm run test
+```
+
+The preview is mirrored for user familiarity; submitted frames remain in the
+camera's original orientation, and the canvas overlay mirrors bounding boxes to
+match the preview. Requests are limited to one in flight, time out after 15
+seconds, and are aborted when the camera stops or the page unmounts. A physical
+camera and browser permission are required for an end-to-end live capture.
+The API has no authentication and must not be exposed publicly without
+authentication, HTTPS, and appropriate access controls.
