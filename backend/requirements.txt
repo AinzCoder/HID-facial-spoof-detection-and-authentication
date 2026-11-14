@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-multipart
+pydantic-settings
+sqlalchemy
+boto3
+python-jose[cryptography]
+passlib[bcrypt]
+cryptography
+Pillow
+tzdata
+numpy>=1.26,<3
+opencv-contrib-python>=4.8,<5
+mediapipe>=0.10.20,<0.11
